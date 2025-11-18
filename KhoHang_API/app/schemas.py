@@ -92,6 +92,11 @@ class AuthLoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+class AuthChangePasswordRequest(BaseModel):
+    email: EmailStr
+    old_password: str
+    new_password: str
+
 class User(BaseModel):
     id: str
     email: EmailStr

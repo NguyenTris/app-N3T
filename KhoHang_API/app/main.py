@@ -136,6 +136,43 @@ def login_user(payload: schemas.AuthLoginRequest):
         refresh_token=fb.get("refreshToken"),
     )
 
+@app.post("/auth/change-password")
+def change_password(payload: schemas.AuthChangePasswordRequest):
+    """
+    Đổi mật khẩu:
+    1. Đăng nhập bằng mật khẩu cũ để lấy ID Token (xác thực người dùng).
+    2. Dùng ID Token để cập nhật mật khẩu mới.
+    """
+    # 1. Xác thực (Login) với mật khẩu cũ
+    login_url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_API_KEY}"
+    login_data = {
+        "email": payload.email,
+        "password": payload.old_password,
+        "returnSecureToken": True,
+    }
+    
+    r_login = requests.post(login_url, json=login_data)
+    if not r_login.ok:
+        raise HTTPException(status_code=400, detail="Mật khẩu cũ không chính xác")
+    
+    id_token = r_login.json().get("idToken")
+
+    # 2. Cập nhật mật khẩu mới
+    update_url = f"https://identitytoolkit.googleapis.com/v1/accounts:update?key={FIREBASE_API_KEY}"
+    update_data = {
+        "idToken": id_token,
+        "password": payload.new_password,
+        "returnSecureToken": False,
+    }
+    
+    r_update = requests.post(update_url, json=update_data)
+    if not r_update.ok:
+        err = r_update.json()
+        msg = err.get("error", {}).get("message", "CHANGE_PASSWORD_FAILED")
+        raise HTTPException(status_code=400, detail=msg)
+
+    return {"message": "Đổi mật khẩu thành công"}
+
 
 @app.post("/auth/logout", status_code=200)
 def logout_user():
@@ -145,21 +182,6 @@ def logout_user():
     """
     return {"message": "logged out"}
 
-
-# -------------------------------------------------
-# SUPPLIERS
-# -------------------------------------------------
-
-@app.get("/suppliers", response_model=List[schemas.Supplier])
-def get_suppliers():
-    return list(suppliers_store.values())
-
-
-@app.post("/suppliers", response_model=schemas.Supplier)
-def create_supplier(supplier: schemas.SupplierCreate):
-    new_supplier = schemas.Supplier(id=_next_supplier_id(), **supplier.model_dump())
-    suppliers_store[new_supplier.id] = new_supplier
-    return new_supplier
 
 @app.post("/auth/forgot-password", status_code=200)
 def forgot_password(payload: schemas.AuthForgotPasswordRequest):
@@ -188,6 +210,22 @@ def forgot_password(payload: schemas.AuthForgotPasswordRequest):
         )
     
     return {"message": "Email đặt lại mật khẩu đã được gửi. Vui lòng kiểm tra hộp thư."}
+
+
+# -------------------------------------------------
+# SUPPLIERS
+# -------------------------------------------------
+
+@app.get("/suppliers", response_model=List[schemas.Supplier])
+def get_suppliers():
+    return list(suppliers_store.values())
+
+
+@app.post("/suppliers", response_model=schemas.Supplier)
+def create_supplier(supplier: schemas.SupplierCreate):
+    new_supplier = schemas.Supplier(id=_next_supplier_id(), **supplier.model_dump())
+    suppliers_store[new_supplier.id] = new_supplier
+    return new_supplier
 
 # -------------------------------------------------
 # ITEMS
